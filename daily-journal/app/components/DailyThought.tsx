@@ -21,16 +21,11 @@ type Competency = {
 type EntryFromDB = {
     id: number;
     text: string;
-    createdAt: string;
-    competencies: number[];
+    created_at: string;
+    competencies: {competency_id: number}[];
 }
 
 // The DailyThought component can't be used elsewhere if we don't export it
-// React components can receive props objects (kind of similar to parameters)
-// props objects can transfer data in a read-only format
-// For example, if you wanted to you could create a title prop so when you create a DailyThought component you could do this:
-//      <DailyThought title="My Thoughts" />
-// We could change the DailyThought header to DailyThought(props) and access the title using props.title
 export default function DailyThought() {
     // input/thoughts/competencies/selected are the variables and setInput/setThoughts/setCompetencies/setSelected update those variables
     // The useState hook allows you to set the default value for each variable
@@ -55,80 +50,57 @@ export default function DailyThought() {
         fetchCompetencies();
     }, []); // An empty dependency array means this effect only runs ONCE when the component mounts
 
-    // Load thoughts from the database using our GET route
+    // Load thoughts from localStorage on page load
     useEffect(() => {
-        async function loadThoughts() {
-            const res = await fetch("/api/entry");
-            
-            if (!res.ok) return;
-            const data: EntryFromDB[] = await res.json();
-            
-            // Transform the response into a Thought
-            const formatted: Thought[] = data.map((row) => (
-                {
-                    text: row.text,
-                    time: new Date(row.createdAt).toLocaleString("en-US", {
-                        month: "short",
-                        day: "2-digit",
-                        year: "numeric",
-                        hour: "2-digit",
-                        minute: "2-digit",
-                    }),
-                    competencies: row.competencies,
-                }
-            ));
-            setThoughts(formatted);
+        const savedThoughts = localStorage.getItem("dailyThoughts");
+        if (savedThoughts) {
+            setThoughts(JSON.parse(savedThoughts));
         }
-        loadThoughts();
     }, []);
 
-    // Save thoughts to localStorage whenever thoughts are added
-    // No longer needed after database is used
-    /*useEffect(() => {
+    // Save thoughts to localStorage w  henever thoughts are added
+    useEffect(() => {
         // Convert the stored JSON data to a string
         localStorage.setItem("dailyThoughts", JSON.stringify(thoughts));
-    }, [thoughts]); // Runs whenever thoughts state changes */
+    }, [thoughts]); // Runs whenever thoughts state changes 
 
     /*  handleSave Function
         No Parameters
         Triggered when the Save Thought button is clicked
         Create a new Thought object and add it to the others thoughts
     */
-    const handleSave = async () => {
+   const handleDelete = (text: string) => {
+        const updatedThoughts = thoughts.filter((thought) => thought.text !== text);
+        setThoughts(updatedThoughts);
+    }
+    const handleEdit = (text: string) => {  
+        const newText = prompt("Edit your thought:", text);
+        if (newText !== null && newText.trim() !== "") {
+            const updatedThoughts = thoughts.map((thought) =>
+                thought.text === text ? { ...thought, text: newText } : thought
+            );
+            setThoughts(updatedThoughts);
+        }
+    }
+    const handleSave = () => {
         // If the input box is empty, return without doing anything
         if (input.trim() === "") return;
 
-       const res = await fetch("api/entry", {
-            method: "POST",
-            headers: {"Content-Type": "application/json"},
-            body: JSON.stringify({
-                text: input,
-                competencyIDs: selected, // must match API route
-            }),
-       });
-
-       if (!res.ok) {
-        alert("Failed to save entry.");
-        return;
-       }
+        // Create timestamp for the current time
+        const now = new Date();
+        const timestamp = now.toLocaleString("en-US", {
+            month: "short",
+            day: "2-digit",
+            year: "numeric",
+            hour: "2-digit",
+            minute: "2-digit",
+        });
 
         // Create a new Thought object and clear the input box
-        const newThought = await res.json();
-        const formattedThought: Thought = {
-            text: newThought.text,
-            time: new Date(newThought.createdAt).toLocaleString("en-US", {
-                month: "short",
-                day: "2-digit",
-                year: "numeric",
-                hour: "2-digit",
-                minute: "2-digit",
-            }),
-            competencies: newThought.competencies,
-        };
-
-        setThoughts([formattedThought, ...thoughts]);
+        // Calling setThoughts will trigger the useEffect with thoughts as a dependency
+        const newThought = { text: input, time: timestamp, competencies: selected };
+        setThoughts([newThought, ...thoughts]);
         setInput("");
-        setSelected([]);
     }
 
     /*  toggleCompetency Function
@@ -165,28 +137,29 @@ export default function DailyThought() {
             <div className="mt-4 text-left">
                 <h3 className="font-semibold mb-2">Employability Competencies:</h3>
                 <div className="space-y-1">
-                    {competencies.map((comp) => (
-                            <label
-                                key={comp.id}
-                                title={comp.description}
-                                className="flex items-center gap-2 cursor-pointer"
-                            >
-                                <input
-                                    className="cursor-pointer"
-                                    type="checkbox"
-                                    checked={selected.includes(comp.id)}
-                                    onChange={() => {toggleCompetency(comp.id)}}
-                                />
-                                <span>{comp.skill}</span>
-                            </label>
-                    ))}
-                </div>
+                        { competencies?.map((comp) => (
+                                <label
+                                    key={comp.id}
+                                    title={comp.description}
+                                    className="flex items-center gap-2 cursor-pointer"
+                                >
+                                    <input
+                                        className="cursor-pointer"
+                                        type="checkbox"
+                                        checked={selected.includes(comp.id)}
+                                        onChange={() => {toggleCompetency(comp.id)}}
+                                    />
+                                    <span>{comp.skill}</span>
+                                </label>
+                        ))}
+                    </div>
             </div>
 
             {/* Save Thought button that triggers the handleSave function */}
             <button
                 onClick={handleSave}
-                className="mt-3 bg-white text-[#ff0000] px-4 py-2 rounded-md font-semibold hover:bg-[#000000] transition-colors cursor-pointer">
+                className="mt-3 bg-white text-[#ff0000] px-4 py-2 rounded-md
+            font-semibold hover:bg-[#000000] transition-colors cursor-pointer">
                 Save Thought
             </button>
             
@@ -199,7 +172,9 @@ export default function DailyThought() {
                     thoughts.slice(0, 5).map((thought, index) => (
                         <div 
                             key={index}
-                            className="bg-white/20 p-3 rounded-lg shadow-sm">
+                            className="bg-white/20 p-3 rounded-lg shadow-sm relative">
+                                <button className="absolute top-2 right-16 text-sm text-red-600 hover:text-red-800" onClick={() => handleDelete(thought.text)}>Delete</button>
+                                <button className="absolute top-2 right-2 text-sm text-blue-600 hover:text-blue-800" onClick={() => handleEdit(thought.text)}>Edit</button>
                             <p className="text-lg">{thought.text}</p>
                             <p className="text-sm opacity-80 mt-1">{thought.time}</p>  
                             {thought.competencies.length > 0 && (
@@ -208,6 +183,7 @@ export default function DailyThought() {
                                     {/* For each competency attached to the current thought, find the actual name of the skill */}
                                     {thought.competencies.map((id) =>
                                         competencies.find((c) => c.id === id)?.skill || `#${id}`).join(", ")
+            
                                     }
                                 </p>
                             )}  
